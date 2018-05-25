@@ -15,6 +15,9 @@ import com.android.volley.toolbox.JsonArrayRequest;
 import com.android.volley.toolbox.JsonObjectRequest;
 import com.android.volley.toolbox.StringRequest;
 import com.android.volley.toolbox.Volley;
+import com.github.nkzawa.emitter.Emitter;
+import com.github.nkzawa.socketio.client.IO;
+import com.github.nkzawa.socketio.client.Socket;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -24,6 +27,8 @@ import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
+import java.net.URISyntaxException;
+import java.util.Date;
 import java.util.Enumeration;
 
 /**
@@ -33,14 +38,35 @@ import java.util.Enumeration;
 public class StatsJobService extends JobService {
     private static final String TAG = "ExampleJobService";
     private boolean jobCancelled = false;
-
+    private Socket mSocket;
+    static String ch="";
+    {
+        try {
+            mSocket = IO.socket("http://192.168.1.101:8088");
+        } catch (URISyntaxException e) {}
+    }
     @Override
     public boolean onStartJob(JobParameters params) {
         Toast.makeText(getApplicationContext(), "Job started", Toast.LENGTH_LONG).show();
         doBackgroundWork(params);
-
+        mSocket.connect();
+        mSocket.on("output", onNewMessage);
         return true;
     }
+    private Emitter.Listener onNewMessage = new Emitter.Listener() {
+        @Override
+        public void call(final Object... args) {
+//            runOnUiThread(new Runnable() {
+//                @Override
+//                public void run() {
+                    JSONArray data = (JSONArray) args[0];
+                    Log.d("socket reslt",data.toString());
+         //       }
+       //     });
+        }
+
+
+    };
 
     private void doBackgroundWork(final JobParameters params) {
         new Thread(new Runnable() {
@@ -64,7 +90,20 @@ public class StatsJobService extends JobService {
             }
         }).start();
     }
+    void CallSocket( String chaine) throws URISyntaxException {
 
+
+        JSONObject request=new JSONObject();
+        try {
+            request.put("recepteur", 1);
+            request.put("nom_chaine", chaine);
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+        mSocket.emit("input", request);
+
+
+    }
     private void sendRequest(){
         // Instantiate the RequestQueue.
         RequestQueue queue = Volley.newRequestQueue(this);
@@ -86,6 +125,15 @@ public class StatsJobService extends JobService {
                                 JSONArray items  = result.getJSONArray("items");
                                 String title = items.getJSONObject(0).getString("title");
                                 Log.d("title", "onResponse: "+title);
+
+                                if (!ch.equals(title)) {
+                                    ch=title;
+                                    try {
+                                        CallSocket(title);
+                                    } catch (URISyntaxException e) {
+                                        e.printStackTrace();
+                                    }
+                                }
                             }
 
                         } catch (JSONException e) {
