@@ -95,7 +95,7 @@ public class StatsJobService extends JobService {
 
         JSONObject request=new JSONObject();
         try {
-            request.put("recepteur", 1);
+            request.put("recepteur", 2);
             request.put("nom_chaine", chaine);
         } catch (JSONException e) {
             e.printStackTrace();
@@ -126,10 +126,12 @@ public class StatsJobService extends JobService {
                                 String title = items.getJSONObject(0).getString("title");
                                 Log.d("title", "onResponse: "+title);
 
-                                if (!ch.equals(title)) {
-                                    ch=title;
+                                if (!ch.equals(title.substring(0,title.indexOf("-")-1))) {
+
+                                    ch=title.substring(0,title.indexOf("-")-1);
+                                    Log.d("titre modified",ch);
                                     try {
-                                        CallSocket(title);
+                                        CallSocket(ch);
                                     } catch (URISyntaxException e) {
                                         e.printStackTrace();
                                     }
