@@ -1,9 +1,8 @@
 package com.esprit.recstatsservice;
 
-import android.app.job.JobParameters;
-import android.app.job.JobService;
-import android.net.wifi.WifiManager;
-import android.text.format.Formatter;
+import android.app.Service;
+import android.content.*;
+import android.os.*;
 import android.util.Log;
 import android.widget.Toast;
 
@@ -11,92 +10,69 @@ import com.android.volley.Request;
 import com.android.volley.RequestQueue;
 import com.android.volley.Response;
 import com.android.volley.VolleyError;
-import com.android.volley.toolbox.JsonArrayRequest;
-import com.android.volley.toolbox.JsonObjectRequest;
 import com.android.volley.toolbox.StringRequest;
 import com.android.volley.toolbox.Volley;
-import com.github.nkzawa.emitter.Emitter;
 import com.github.nkzawa.socketio.client.IO;
 import com.github.nkzawa.socketio.client.Socket;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
-
-import java.net.Inet4Address;
-import java.net.InetAddress;
-import java.net.NetworkInterface;
-import java.net.SocketException;
 import java.net.URISyntaxException;
-import java.util.Date;
-import java.util.Enumeration;
+import java.util.Random;
 
-/**
- * Created by Ghassen on 25/05/2018.
- */
-
-public class StatsJobService extends JobService {
-    private static final String TAG = "ExampleJobService";
-    private boolean jobCancelled = false;
+public class StatsJobService extends Service {
     private Socket mSocket;
-    static String ch="";
+    static String ch;
+    static double duration=0;
+    private static final String TAG = "StatsJobService";
+
     {
         try {
+
             mSocket = IO.socket("http://192.168.1.101:8088");
+            Log.d(TAG, "Socket started");
+
         } catch (URISyntaxException e) {}
     }
+
+    public StatsJobService() {
+    }
+
     @Override
-    public boolean onStartJob(JobParameters params) {
-        Toast.makeText(getApplicationContext(), "Job started", Toast.LENGTH_LONG).show();
-        doBackgroundWork(params);
+    public IBinder onBind(Intent intent) {
+        // TODO: Return the communication channel to the service.
+        throw new UnsupportedOperationException("Not yet implemented");
+    }
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
         mSocket.connect();
-        mSocket.on("output", onNewMessage);
-        return true;
     }
-    private Emitter.Listener onNewMessage = new Emitter.Listener() {
-        @Override
-        public void call(final Object... args) {
-//            runOnUiThread(new Runnable() {
-//                @Override
-//                public void run() {
-                    JSONArray data = (JSONArray) args[0];
-                    Log.d("socket reslt",data.toString());
-         //       }
-       //     });
-        }
 
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
 
-    };
+        String message = "StatsJobService onStartCommand()";
 
-    private void doBackgroundWork(final JobParameters params) {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                if (jobCancelled) {
-                    return;
-                }
+        Toast.makeText(getApplicationContext(), message, Toast.LENGTH_LONG).show();
 
-                Log.d(TAG, getIP());
-                sendRequest();
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                //Toast.makeText(this.getContext(), "Hiiiiiiiiiiiiiiiiii", Toast.LENGTH_SHORT).show();
-                Log.d(TAG, "Job finished");
-
-                jobFinished(params, false);
-            }
-        }).start();
+        Log.d(TAG, "onStartCommand()");
+        sendRequest();
+        return super.onStartCommand(intent, flags, startId);
     }
-    void CallSocket( String chaine) throws URISyntaxException {
+
+    void CallSocket( String chaine, double duration) throws URISyntaxException {
 
 
         JSONObject request=new JSONObject();
         try {
-            request.put("recepteur", 2);
+            Random r = new Random();
+            int i = r.nextInt(5 - 1) + 1;
+            request.put("recepteur", i);
             request.put("nom_chaine", chaine);
+            request.put("duree", duration);
         } catch (JSONException e) {
             e.printStackTrace();
         }
@@ -104,14 +80,15 @@ public class StatsJobService extends JobService {
 
 
     }
+
     private void sendRequest(){
         // Instantiate the RequestQueue.
         RequestQueue queue = Volley.newRequestQueue(this);
         String url = String.format(
-                "http://192.168.1.103:8080/jsonrpc?request=" +
+                "http://0.0.0.0:8080/jsonrpc?request=" +
                         "{\"jsonrpc\": \"2.0\", \"method\": \"Playlist.GetItems\", \"params\": { \"properties\": [ \"title\" ], \"playlistid\": 1}, \"id\": 1}"
         );
-
+        Log.d("URL", url);
         // Request a string response from the provided URL.
         StringRequest stringRequest = new StringRequest(Request.Method.GET, url,
                 new Response.Listener<String>() {
@@ -126,15 +103,27 @@ public class StatsJobService extends JobService {
                                 String title = items.getJSONObject(0).getString("title");
                                 Log.d("title", "onResponse: "+title);
 
-                                if (!ch.equals(title.substring(0,title.indexOf("-")-1))) {
+                                if (title.contains("-"))
+                                    title= title.substring(0,title.indexOf("-")-1);
+                                if(ch==null){
+                                    ch=title;
+                                }
+                                if (!ch.equals(title)) {
 
-                                    ch=title.substring(0,title.indexOf("-")-1);
-                                    Log.d("titre modified",ch);
+                                    Log.d("New Channel is watching",title);
+                                    ShowToast("New Channel is watching : "+title,0);
                                     try {
-                                        CallSocket(ch);
-                                    } catch (URISyntaxException e) {
+                                        ShowToast(ch+" saved ",duration);
+                                        Log.d(TAG, "socket called");
+                                        CallSocket(ch,duration);
+                                    } catch (Exception e) {
                                         e.printStackTrace();
                                     }
+                                    ch=title;
+                                    duration=0;
+                                }else {
+                                    duration=duration+20;
+                                    ShowToast(ch,duration);
                                 }
                             }
 
@@ -156,32 +145,13 @@ public class StatsJobService extends JobService {
 
     }
 
-    private String getIP(){
-        try {
-            Enumeration e = NetworkInterface.getNetworkInterfaces();
-            while(e.hasMoreElements())
-            {
-                NetworkInterface n = (NetworkInterface) e.nextElement();
-                Enumeration ee = n.getInetAddresses();
-                int h = 0;
-                while (ee.hasMoreElements())
-                {
-                    h++;
-                    InetAddress i = (InetAddress) ee.nextElement();
-                    if (h==2)
-                        return i.getHostAddress();
-                }
-            }
-        } catch (SocketException ex) {
-            Log.e("SocketException", ex.toString());
-        }
-        return "0.0.0.0";
+    public void ShowToast(String ch, double duration){
+        Toast.makeText(getApplicationContext(), ch+" "+duration, Toast.LENGTH_LONG).show();
     }
 
+
     @Override
-    public boolean onStopJob(JobParameters params) {
-        Log.d(TAG, "Job cancelled before completion");
-        jobCancelled = true;
-        return true;
+    public void onDestroy() {
+        super.onDestroy();
     }
 }
